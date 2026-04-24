@@ -71,6 +71,36 @@ Host/build/ch32v208-mux-cli uart-close 0
 2. 当前用户有权限访问 `1A86:2080`。
 3. 虚拟机环境中 USB 设备已经直通到当前系统。
 
+## udev 权限规则
+
+普通用户访问当前固件 USB 设备时，建议安装本项目提供的规则：
+
+```sh
+sudo install -m 0644 Host/udev/60-ch32v208-mux.rules /etc/udev/rules.d/60-ch32v208-mux.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+规则内容：
+
+```udev
+SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", ATTR{idProduct}=="2080", MODE="0660", GROUP="uucp", TAG+="uaccess"
+```
+
+说明：
+
+- `GROUP="uucp"`：允许 `uucp` 组成员直接访问该 USB 设备。
+- `TAG+="uaccess"`：在使用 systemd-logind 的桌面/本地会话中，授予当前活跃用户访问权限。
+- `MODE="0660"`：不向所有用户开放设备节点。
+
+当前用户 `Tiger` 已在 `uucp` 组内，因此安装规则并重新触发 udev 后通常不需要再修改组成员。如果现场机器用户不在 `uucp` 组，可执行：
+
+```sh
+sudo usermod -aG uucp "$USER"
+```
+
+然后重新登录。
+
 ## 后续迁移到内核态
 
 迁移时建议保持三层边界：

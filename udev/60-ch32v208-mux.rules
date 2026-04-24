@@ -1,0 +1,3 @@
+# CH32V208 USB Vendor UART + BLE Host userspace driver.
+# Grants access to members of the uucp group and to active local seats.
+SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", ATTR{idProduct}=="2080", MODE="0660", GROUP="uucp", TAG+="uaccess"
