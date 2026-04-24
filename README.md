@@ -34,6 +34,7 @@ ctest --test-dir build --output-on-failure
 ./build/ch32v208-mux-cli uart-cap 0
 ./build/ch32v208-mux-cli uart-open 0 115200
 ./build/ch32v208-mux-cli uart-close 0
+./build/ch32v208-mux-cli debug-xfer
 ```
 
 Linux 下普通用户访问 USB 设备可能需要 udev 规则或临时使用 root 权限。

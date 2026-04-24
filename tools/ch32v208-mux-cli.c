@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <libusb-1.0/libusb.h>
+
 #include "ch32v208_mux/uart.h"
 
 static void usage(const char *argv0)
@@ -12,12 +14,28 @@ static void usage(const char *argv0)
             "  %s heartbeat [text]\n"
             "  %s uart-cap <port>\n"
             "  %s uart-open <port> [baud]\n"
-            "  %s uart-close <port>\n",
+            "  %s uart-close <port>\n"
+            "  %s debug-xfer\n",
+            argv0,
             argv0,
             argv0,
             argv0,
             argv0,
             argv0);
+}
+
+static void dump_hex(const char *prefix, const uint8_t *data, size_t len)
+{
+    printf("%s (%zu bytes):", prefix, len);
+    for(size_t i = 0; i < len; ++i)
+    {
+        if((i % 16U) == 0U)
+        {
+            printf("\n  %04zu:", i);
+        }
+        printf(" %02X", data[i]);
+    }
+    putchar('\n');
 }
 
 static int parse_port(const char *text, uint8_t *port)
@@ -159,6 +177,125 @@ static int cmd_uart_open(ch32mux_device_t *device, uint8_t port, const char *bau
     return 0;
 }
 
+static int cmd_debug_xfer(ch32mux_device_t *device)
+{
+    uint8_t out[CH32MUX_MAX_FRAME_LEN];
+    uint8_t in[CH32MUX_MAX_FRAME_LEN];
+    size_t out_len = 0;
+    ch32mux_header_t req;
+    ch32mux_header_t rsp;
+    int transferred = 0;
+    int libusb_status = 0;
+    int ret;
+
+    memset(&req, 0, sizeof(req));
+    req.seq = ch32mux_next_seq(device);
+    req.ch_type = CH32MUX_CH_SYS;
+    req.ch_id = 0;
+    req.msg_type = CH32MUX_MSG_CMD;
+    req.opcode = CH32MUX_SYS_GET_DEV_INFO;
+
+    ret = ch32mux_build_frame(out, sizeof(out), &out_len, &req, NULL, 0);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "build frame failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    printf("timeout=%u ms\n", ch32mux_timeout_ms(device));
+    dump_hex("EP2 OUT GET_DEV_INFO", out, out_len);
+
+    ret = ch32mux_debug_bulk_transfer(device,
+                                      CH32MUX_EP_FRAME_OUT,
+                                      out,
+                                      (int)out_len,
+                                      &transferred,
+                                      ch32mux_timeout_ms(device),
+                                      &libusb_status);
+    printf("bulk OUT ep=0x%02X ret=%s libusb=%d(%s) transferred=%d\n",
+           CH32MUX_EP_FRAME_OUT,
+           ch32mux_result_name(ret),
+           libusb_status,
+           libusb_error_name(libusb_status),
+           transferred);
+    if(ret != CH32MUX_OK)
+    {
+        return 1;
+    }
+
+    memset(in, 0, sizeof(in));
+    transferred = 0;
+    libusb_status = 0;
+    ret = ch32mux_debug_bulk_transfer(device,
+                                      CH32MUX_EP_FRAME_IN,
+                                      in,
+                                      CH32MUX_EP_PACKET_SIZE,
+                                      &transferred,
+                                      ch32mux_timeout_ms(device),
+                                      &libusb_status);
+    printf("bulk IN ep=0x%02X ret=%s libusb=%d(%s) transferred=%d\n",
+           CH32MUX_EP_FRAME_IN,
+           ch32mux_result_name(ret),
+           libusb_status,
+           libusb_error_name(libusb_status),
+           transferred);
+    if(transferred > 0)
+    {
+        dump_hex("EP2 IN raw", in, (size_t)transferred);
+    }
+    if(ret != CH32MUX_OK)
+    {
+        return 1;
+    }
+
+    ret = ch32mux_decode_header(in, (size_t)transferred, &rsp);
+    printf("decode ret=%s\n", ch32mux_result_name(ret));
+    if(ret != CH32MUX_OK)
+    {
+        return 1;
+    }
+
+    printf("rsp magic=0x%04X seq=%u ref=%u ch=0x%02X id=%u msg=0x%02X op=0x%02X status=0x%04X payload=%u total=%u\n",
+           rsp.magic,
+           rsp.seq,
+           rsp.ref_seq,
+           rsp.ch_type,
+           rsp.ch_id,
+           rsp.msg_type,
+           rsp.opcode,
+           rsp.status,
+           rsp.payload_len,
+           rsp.total_len);
+
+    if((rsp.total_len > (uint16_t)transferred) &&
+       (rsp.total_len <= CH32MUX_MAX_FRAME_LEN))
+    {
+        int remaining = (int)rsp.total_len - transferred;
+        int transferred2 = 0;
+        int libusb_status2 = 0;
+
+        ret = ch32mux_debug_bulk_transfer(device,
+                                          CH32MUX_EP_FRAME_IN,
+                                          &in[transferred],
+                                          remaining,
+                                          &transferred2,
+                                          ch32mux_timeout_ms(device),
+                                          &libusb_status2);
+        printf("bulk IN remainder ret=%s libusb=%d(%s) transferred=%d\n",
+               ch32mux_result_name(ret),
+               libusb_status2,
+               libusb_error_name(libusb_status2),
+               transferred2);
+        transferred += transferred2;
+        if(transferred2 > 0)
+        {
+            dump_hex("EP2 IN combined", in, (size_t)transferred);
+        }
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     ch32mux_device_t *device = NULL;
@@ -180,6 +317,10 @@ int main(int argc, char **argv)
     if(strcmp(argv[1], "probe") == 0)
     {
         exit_code = cmd_probe(device);
+    }
+    else if(strcmp(argv[1], "debug-xfer") == 0)
+    {
+        exit_code = cmd_debug_xfer(device);
     }
     else if(strcmp(argv[1], "heartbeat") == 0)
     {

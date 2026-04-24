@@ -63,7 +63,10 @@ Host/build/ch32v208-mux-cli heartbeat ping
 Host/build/ch32v208-mux-cli uart-cap 0
 Host/build/ch32v208-mux-cli uart-open 0 115200
 Host/build/ch32v208-mux-cli uart-close 0
+Host/build/ch32v208-mux-cli debug-xfer
 ```
+
+`debug-xfer` 只发送一个 `SYS_GET_DEV_INFO` 帧，并打印 EP2 OUT/IN 的 libusb 返回值、实际传输字节数和原始帧内容，用于定位 Host 与固件端点收发问题。
 
 如果返回 `ERR_NOT_FOUND`，优先确认：
 

@@ -271,6 +271,44 @@ int ch32mux_read_hint(ch32mux_device_t *device, ch32mux_irq_hint_t *hint)
     return ch32mux_parse_irq_hint(raw, sizeof(raw), hint);
 }
 
+int ch32mux_debug_bulk_transfer(ch32mux_device_t *device,
+                                uint8_t endpoint,
+                                uint8_t *data,
+                                int length,
+                                int *transferred,
+                                unsigned int timeout_ms,
+                                int *libusb_status)
+{
+    int local_transferred = 0;
+    int ret;
+
+    if((device == NULL) || (data == NULL) || (length <= 0))
+    {
+        return CH32MUX_ERR_ARG;
+    }
+
+    ret = libusb_bulk_transfer(device->handle,
+                               endpoint,
+                               data,
+                               length,
+                               &local_transferred,
+                               timeout_ms);
+    if(transferred != NULL)
+    {
+        *transferred = local_transferred;
+    }
+    if(libusb_status != NULL)
+    {
+        *libusb_status = ret;
+    }
+
+    if(ret != LIBUSB_SUCCESS)
+    {
+        return map_libusb_error(ret);
+    }
+    return CH32MUX_OK;
+}
+
 uint16_t ch32mux_next_seq(ch32mux_device_t *device)
 {
     uint16_t seq;

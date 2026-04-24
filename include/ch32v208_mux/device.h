@@ -31,6 +31,13 @@ int ch32mux_read_frame(ch32mux_device_t *device,
                        size_t frame_capacity,
                        size_t *frame_len);
 int ch32mux_read_hint(ch32mux_device_t *device, ch32mux_irq_hint_t *hint);
+int ch32mux_debug_bulk_transfer(ch32mux_device_t *device,
+                                uint8_t endpoint,
+                                uint8_t *data,
+                                int length,
+                                int *transferred,
+                                unsigned int timeout_ms,
+                                int *libusb_status);
 uint16_t ch32mux_next_seq(ch32mux_device_t *device);
 unsigned int ch32mux_timeout_ms(const ch32mux_device_t *device);
 
