@@ -205,6 +205,10 @@ int ch32mux_read_frame(ch32mux_device_t *device,
         {
             return CH32MUX_ERR_OVERFLOW;
         }
+        if(capacity > (int)CH32MUX_EP_PACKET_SIZE)
+        {
+            capacity = (int)CH32MUX_EP_PACKET_SIZE;
+        }
 
         ret = libusb_bulk_transfer(device->handle,
                                    CH32MUX_EP_FRAME_IN,

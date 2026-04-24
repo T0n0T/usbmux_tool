@@ -203,7 +203,7 @@ static int cmd_debug_xfer(ch32mux_device_t *device)
     }
 
     printf("timeout=%u ms\n", ch32mux_timeout_ms(device));
-    dump_hex("EP2 OUT GET_DEV_INFO", out, out_len);
+    dump_hex("EP3 OUT GET_DEV_INFO", out, out_len);
 
     ret = ch32mux_debug_bulk_transfer(device,
                                       CH32MUX_EP_FRAME_OUT,

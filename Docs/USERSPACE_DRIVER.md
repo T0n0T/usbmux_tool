@@ -10,7 +10,7 @@
 
 - `VID:PID`：`1A86:2080`
 - USB Interface：`0`
-- `EP2 OUT (0x02)`：发送完整私有协议帧
+- `EP3 OUT (0x03)`：发送完整私有协议帧
 - `EP2 IN (0x82)`：读取完整私有协议帧
 - `EP1 IN (0x81)`：读取 `8B` 异步提示包
 - 最大帧长：`512B`
@@ -29,7 +29,7 @@
 - `include/ch32v208_mux/device.h` 与 `src/device.c`
   - libusb 初始化
   - 设备打开与接口 claim
-  - `EP2` bulk 帧收发
+  - `EP3 OUT` / `EP2 IN` bulk 帧收发
   - `EP1` interrupt hint 读取
 - `include/ch32v208_mux/uart.h` 与 `src/uart.c`
   - `SYS_GET_DEV_INFO`
@@ -66,7 +66,7 @@ Host/build/ch32v208-mux-cli uart-close 0
 Host/build/ch32v208-mux-cli debug-xfer
 ```
 
-`debug-xfer` 只发送一个 `SYS_GET_DEV_INFO` 帧，并打印 EP2 OUT/IN 的 libusb 返回值、实际传输字节数和原始帧内容，用于定位 Host 与固件端点收发问题。
+`debug-xfer` 只发送一个 `SYS_GET_DEV_INFO` 帧，并打印 EP3 OUT / EP2 IN 的 libusb 返回值、实际传输字节数和原始帧内容，用于定位 Host 与固件端点收发问题。
 
 如果返回 `ERR_NOT_FOUND`，优先确认：
 

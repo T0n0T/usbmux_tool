@@ -12,7 +12,7 @@ extern "C" {
 #define CH32MUX_USB_PID              0x2080U
 #define CH32MUX_USB_INTERFACE        0U
 #define CH32MUX_EP_HINT_IN           0x81U
-#define CH32MUX_EP_FRAME_OUT         0x02U
+#define CH32MUX_EP_FRAME_OUT         0x03U
 #define CH32MUX_EP_FRAME_IN          0x82U
 #define CH32MUX_EP_HINT_SIZE         8U
 #define CH32MUX_EP_PACKET_SIZE       64U

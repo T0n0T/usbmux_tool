@@ -6,7 +6,7 @@
 
 - USB 设备：`VID:PID = 1A86:2080`
 - Interface：`0`
-- `EP2 OUT 0x02`：Host 到 Device 私有协议帧
+- `EP3 OUT 0x03`：Host 到 Device 私有协议帧
 - `EP2 IN 0x82`：Device 到 Host 私有协议帧
 - `EP1 IN 0x81`：8 字节异步提示包
 - 协议头与固件 `App/usb_mux_dev/proto/vendor_proto.h` 对齐
