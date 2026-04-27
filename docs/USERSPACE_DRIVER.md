@@ -2,7 +2,7 @@
 
 ## 目标
 
-`Host` 子项目提供一个先于内核态驱动落地的用户态驱动实现，用于验证当前固件的 USB Vendor 协议、端点收发和 UART/SYS 通道语义。
+`Host/linux/userspace` 提供一个先于内核态驱动落地的用户态驱动实现，用于验证当前固件的 USB Vendor 协议、端点收发和 UART/SYS 通道语义。
 
 该实现不向系统注册 tty 设备。它的职责是把协议和传输路径跑通，并为后续内核态驱动沉淀稳定的协议边界。
 
@@ -21,31 +21,31 @@
 
 ## 模块边界
 
-- `include/ch32v208_mux/proto.h` 与 `src/proto.c`
+- `userspace/include/ch32v208_mux/proto.h` 与 `userspace/src/proto.c`
   - 协议常量
   - 帧头编码、解码
   - `CRC16-CCITT` 计算
   - `EP1` hint 解析
-- `include/ch32v208_mux/device.h` 与 `src/device.c`
+- `userspace/include/ch32v208_mux/device.h` 与 `userspace/src/device.c`
   - libusb 初始化
   - 设备打开与接口 claim
   - `EP3 OUT` / `EP2 IN` bulk 帧收发
   - `EP1` interrupt hint 读取
-- `include/ch32v208_mux/uart.h` 与 `src/uart.c`
+- `userspace/include/ch32v208_mux/uart.h` 与 `userspace/src/uart.c`
   - `SYS_GET_DEV_INFO`
   - `SYS_GET_CAPS`
   - `SYS_HEARTBEAT`
   - UART port capability/open/close/stats
   - UART data write/read
-- `tools/ch32v208-mux-cli.c`
+- `userspace/tools/ch32v208-mux-cli.c`
   - 面向现场验证的命令行入口
 
 ## 构建与测试
 
 ```sh
-cmake -S Host -B Host/build
-cmake --build Host/build
-ctest --test-dir Host/build --output-on-failure
+cmake -S Host/linux/userspace -B Host/userspace/build
+cmake --build Host/userspace/build
+ctest --test-dir Host/userspace/build --output-on-failure
 ```
 
 协议单元测试不依赖硬件，覆盖：
@@ -58,12 +58,12 @@ ctest --test-dir Host/build --output-on-failure
 ## CLI 使用
 
 ```sh
-Host/build/ch32v208-mux-cli probe
-Host/build/ch32v208-mux-cli heartbeat ping
-Host/build/ch32v208-mux-cli uart-cap 0
-Host/build/ch32v208-mux-cli uart-open 0 115200
-Host/build/ch32v208-mux-cli uart-close 0
-Host/build/ch32v208-mux-cli debug-xfer
+Host/userspace/build/ch32v208-mux-cli probe
+Host/userspace/build/ch32v208-mux-cli heartbeat ping
+Host/userspace/build/ch32v208-mux-cli uart-cap 0
+Host/userspace/build/ch32v208-mux-cli uart-open 0 115200
+Host/userspace/build/ch32v208-mux-cli uart-close 0
+Host/userspace/build/ch32v208-mux-cli debug-xfer
 ```
 
 `debug-xfer` 只发送一个 `SYS_GET_DEV_INFO` 帧，并打印 EP3 OUT / EP2 IN 的 libusb 返回值、实际传输字节数和原始帧内容，用于定位 Host 与固件端点收发问题。
@@ -79,7 +79,7 @@ Host/build/ch32v208-mux-cli debug-xfer
 普通用户访问当前固件 USB 设备时，建议安装本项目提供的规则：
 
 ```sh
-sudo install -m 0644 Host/udev/60-ch32v208-mux.rules /etc/udev/rules.d/60-ch32v208-mux.rules
+sudo install -m 0644 Host/userspace/udev/60-ch32v208-mux.rules /etc/udev/rules.d/60-ch32v208-mux.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
