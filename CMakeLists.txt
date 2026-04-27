@@ -19,6 +19,7 @@ add_library(ch32v208_mux_host
     src/proto.c
     src/device.c
     src/uart.c
+    src/ble.c
 )
 
 target_include_directories(ch32v208_mux_host

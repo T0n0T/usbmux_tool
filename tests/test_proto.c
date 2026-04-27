@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ch32v208_mux/ble.h"
 #include "ch32v208_mux/proto.h"
 
 static int failures;
@@ -99,12 +100,31 @@ static void test_parse_irq_hint(void)
     EXPECT_EQ_U16(hint.dropped_bitmap, CH32MUX_PENDING_EVT);
 }
 
+static void test_parse_ble_scan_event(void)
+{
+    uint8_t payload[16] = {
+        0x01, 0x02, 0xD8, 0x09,
+        0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6,
+        0x02, 0x01, 0x06, 0x05, 0x09, 0x43,
+    };
+    ch32mux_ble_scan_result_t result;
+
+    EXPECT_TRUE(ch32mux_ble_parse_scan_result(payload, sizeof(payload), &result) == CH32MUX_OK);
+    EXPECT_EQ_U16(result.addr_type, 0x01);
+    EXPECT_EQ_U16(result.event_type, 0x02);
+    EXPECT_EQ_U16((uint8_t)result.rssi, 0xD8);
+    EXPECT_EQ_U16(result.adv_len, 0x09);
+    EXPECT_TRUE(memcmp(result.addr, &payload[4], 6) == 0);
+    EXPECT_TRUE(memcmp(result.adv_prefix, &payload[10], 6) == 0);
+}
+
 int main(void)
 {
     test_encode_decode_header();
     test_decode_rejects_bad_crc();
     test_build_rejects_oversize_payload();
     test_parse_irq_hint();
+    test_parse_ble_scan_event();
 
     return failures == 0 ? 0 : 1;
 }

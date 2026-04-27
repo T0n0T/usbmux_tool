@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <libusb-1.0/libusb.h>
 
+#include "ch32v208_mux/ble.h"
 #include "ch32v208_mux/uart.h"
 
 static void usage(const char *argv0)
@@ -14,8 +16,12 @@ static void usage(const char *argv0)
             "  %s heartbeat [text]\n"
             "  %s uart-cap <port>\n"
             "  %s uart-open <port> [baud]\n"
+            "  %s uart-loopback <port> [baud] [payload]\n"
             "  %s uart-close <port>\n"
+            "  %s ble-scan [seconds]\n"
             "  %s debug-xfer\n",
+            argv0,
+            argv0,
             argv0,
             argv0,
             argv0,
@@ -174,6 +180,228 @@ static int cmd_uart_open(ch32mux_device_t *device, uint8_t port, const char *bau
     }
 
     printf("uart %u opened at %u 8N1\n", port, line.baudrate);
+    return 0;
+}
+
+static int cmd_uart_loopback(ch32mux_device_t *device,
+                             uint8_t port,
+                             const char *baud_text,
+                             const char *payload_text)
+{
+    ch32mux_uart_line_coding_t line = {
+        .baudrate = 115200,
+        .data_bits = 8,
+        .parity = 0,
+        .stop_bits = 1,
+    };
+    const uint8_t *payload = (const uint8_t *)payload_text;
+    size_t payload_len = strlen(payload_text);
+    uint8_t rx[CH32MUX_MAX_FRAME_LEN];
+    size_t rx_total = 0;
+    int ret;
+
+    if(baud_text != NULL)
+    {
+        line.baudrate = (uint32_t)strtoul(baud_text, NULL, 0);
+    }
+    if(payload_len > (CH32MUX_MAX_FRAME_LEN - CH32MUX_HEADER_LEN))
+    {
+        fprintf(stderr, "payload too large: %zu\n", payload_len);
+        return 2;
+    }
+
+    ret = ch32mux_uart_open(device, port, &line);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "UART_OPEN failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    ret = ch32mux_uart_write(device, port, payload, payload_len);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "UART_WRITE failed: %s\n", ch32mux_result_name(ret));
+        (void)ch32mux_uart_close(device, port);
+        return 1;
+    }
+
+    while(rx_total < payload_len)
+    {
+        uint8_t chunk[CH32MUX_MAX_FRAME_LEN];
+        size_t chunk_len = 0;
+
+        ret = ch32mux_uart_read(device, port, chunk, sizeof(chunk), &chunk_len);
+        if(ret != CH32MUX_OK)
+        {
+            fprintf(stderr, "UART_READ failed after %zu/%zu bytes: %s\n",
+                    rx_total,
+                    payload_len,
+                    ch32mux_result_name(ret));
+            (void)ch32mux_uart_close(device, port);
+            return 1;
+        }
+        if((chunk_len == 0U) || ((rx_total + chunk_len) > sizeof(rx)))
+        {
+            fprintf(stderr, "UART_READ invalid chunk len=%zu after %zu/%zu bytes\n",
+                    chunk_len,
+                    rx_total,
+                    payload_len);
+            (void)ch32mux_uart_close(device, port);
+            return 1;
+        }
+
+        memcpy(&rx[rx_total], chunk, chunk_len);
+        rx_total += chunk_len;
+    }
+
+    printf("uart %u loopback baud=%u tx=%zu rx=%zu\n", port, line.baudrate, payload_len, rx_total);
+    dump_hex("TX", payload, payload_len);
+    dump_hex("RX", rx, rx_total);
+
+    ret = ch32mux_uart_close(device, port);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "UART_CLOSE failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    if((rx_total != payload_len) || (memcmp(rx, payload, payload_len) != 0))
+    {
+        fprintf(stderr, "loopback mismatch\n");
+        return 1;
+    }
+
+    printf("loopback ok\n");
+    return 0;
+}
+
+static void print_ble_addr(const uint8_t addr[6])
+{
+    printf("%02X:%02X:%02X:%02X:%02X:%02X",
+           addr[5],
+           addr[4],
+           addr[3],
+           addr[2],
+           addr[1],
+           addr[0]);
+}
+
+static int cmd_ble_scan(ch32mux_device_t *device, const char *seconds_text)
+{
+    ch32mux_ble_cap_t cap;
+    unsigned long seconds = 5UL;
+    time_t end_time;
+    unsigned int reports = 0;
+    int ret;
+
+    if(seconds_text != NULL)
+    {
+        seconds = strtoul(seconds_text, NULL, 0);
+        if(seconds == 0UL)
+        {
+            seconds = 5UL;
+        }
+    }
+
+    ret = ch32mux_ble_get_cap(device, &cap);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "BLE_GET_CAP failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    printf("ble cap links=%u scan=%u connect=%u gatt=%u scan_int=%u scan_win=%u\n",
+           cap.max_links,
+           cap.supports_scan,
+           cap.supports_connect,
+           cap.supports_gatt,
+           cap.scan_interval,
+           cap.scan_window);
+
+    ret = ch32mux_ble_set_scan_param(device,
+                                     cap.scan_interval != 0U ? cap.scan_interval : 16U,
+                                     cap.scan_window != 0U ? cap.scan_window : 16U,
+                                     0U,
+                                     0x03U,
+                                     1U,
+                                     0U);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "BLE_SET_SCAN_PARAM failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    ret = ch32mux_ble_scan_start(device);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "BLE_SCAN_START failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    printf("ble scan started for %lu seconds\n", seconds);
+    end_time = time(NULL) + (time_t)seconds;
+    while(time(NULL) <= end_time)
+    {
+        ch32mux_header_t header;
+        uint8_t payload[CH32MUX_MAX_FRAME_LEN];
+        size_t payload_len = 0;
+
+        ret = ch32mux_ble_read_event(device, &header, payload, sizeof(payload), &payload_len);
+        if(ret == CH32MUX_ERR_TIMEOUT)
+        {
+            continue;
+        }
+        if(ret != CH32MUX_OK)
+        {
+            fprintf(stderr, "BLE event read failed: %s\n", ch32mux_result_name(ret));
+            break;
+        }
+
+        if((header.ch_type == CH32MUX_CH_BLE_MGMT) &&
+           (header.ch_id == 0U) &&
+           (header.opcode == CH32MUX_BLE_EVT_SCAN_RSP))
+        {
+            ch32mux_ble_scan_result_t result;
+
+            ret = ch32mux_ble_parse_scan_result(payload, payload_len, &result);
+            if(ret != CH32MUX_OK)
+            {
+                fprintf(stderr, "BLE scan event parse failed: %s\n", ch32mux_result_name(ret));
+                continue;
+            }
+
+            printf("scan[%u] addr=", reports);
+            print_ble_addr(result.addr);
+            printf(" type=%u event=%u rssi=%d adv_len=%u adv_prefix=",
+                   result.addr_type,
+                   result.event_type,
+                   result.rssi,
+                   result.adv_len);
+            for(size_t i = 0; i < sizeof(result.adv_prefix); ++i)
+            {
+                printf("%02X", result.adv_prefix[i]);
+            }
+            putchar('\n');
+            reports++;
+        }
+        else
+        {
+            printf("event ch=0x%02X id=%u op=0x%02X payload=%zu\n",
+                   header.ch_type,
+                   header.ch_id,
+                   header.opcode,
+                   payload_len);
+        }
+    }
+
+    ret = ch32mux_ble_scan_stop(device);
+    if(ret != CH32MUX_OK)
+    {
+        fprintf(stderr, "BLE_SCAN_STOP failed: %s\n", ch32mux_result_name(ret));
+        return 1;
+    }
+
+    printf("ble scan stopped reports=%u\n", reports);
     return 0;
 }
 
@@ -352,6 +580,22 @@ int main(int argc, char **argv)
             exit_code = cmd_uart_open(device, port, argc == 4 ? argv[3] : NULL);
         }
     }
+    else if(strcmp(argv[1], "uart-loopback") == 0)
+    {
+        uint8_t port;
+        if(((argc < 3) || (argc > 5)) || (parse_port(argv[2], &port) != 0))
+        {
+            usage(argv[0]);
+            exit_code = 2;
+        }
+        else
+        {
+            exit_code = cmd_uart_loopback(device,
+                                          port,
+                                          argc >= 4 ? argv[3] : NULL,
+                                          argc >= 5 ? argv[4] : "ch32v208-loopback-0");
+        }
+    }
     else if(strcmp(argv[1], "uart-close") == 0)
     {
         uint8_t port;
@@ -373,6 +617,18 @@ int main(int argc, char **argv)
                 printf("uart %u closed\n", port);
                 exit_code = 0;
             }
+        }
+    }
+    else if(strcmp(argv[1], "ble-scan") == 0)
+    {
+        if(argc > 3)
+        {
+            usage(argv[0]);
+            exit_code = 2;
+        }
+        else
+        {
+            exit_code = cmd_ble_scan(device, argc == 3 ? argv[2] : NULL);
         }
     }
     else
